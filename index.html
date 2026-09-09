@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gooner Lounge</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="lounge-header">
+            <h1>🛋️ GOONER LOUNGE</h1>
+            <p class="tagline">Up to 5 bros on cam + one big screen for whatever gets you there.</p>
+        </header>
+
+        <!-- ============ HOME SCREEN ============ -->
+        <div id="homeScreen" class="screen">
+            <div class="panel">
+                <h2>🎭 Your Goon Name</h2>
+                <input type="text" id="nameInput" class="text-input name-input" placeholder="What do the bros call you?" maxlength="16">
+                <p class="tip">📹 Cams stream browser-to-browser — nothing is uploaded to any server.</p>
+            </div>
+            <div class="home-actions">
+                <button id="hostBtn" class="btn main-btn">🛋️ Open a Lounge</button>
+                <div class="join-row">
+                    <input type="text" id="joinCodeInput" class="text-input" placeholder="Room code" maxlength="6">
+                    <button id="joinBtn" class="btn main-btn">🚪 Join</button>
+                </div>
+                <p id="connectStatus" class="muted"></p>
+            </div>
+        </div>
+
+        <!-- ============ LOUNGE SCREEN ============ -->
+        <div id="loungeScreen" class="screen hidden">
+            <div class="share-bar panel">
+                <span id="shareLink" class="share-link"></span>
+                <div class="share-actions">
+                    <button id="copyLinkBtn" class="btn small-btn">Copy</button>
+                    <button id="textLinkBtn" class="btn small-btn">📤 Text It</button>
+                </div>
+                <span class="occupancy">👥 <span id="occupancyCount">1</span>/5</span>
+            </div>
+
+            <div class="lounge-grid">
+                <!-- Cinema -->
+                <div class="cinema-zone">
+                    <div id="cinema" class="cinema">
+                        <div id="cinemaPlaceholder" class="cinema-placeholder">
+                            <div class="cinema-icon">🍿</div>
+                            <p id="cinemaHint">Nothing on screen yet.</p>
+                        </div>
+                        <video id="cinemaVideo" class="cinema-video hidden" playsinline autoplay></video>
+                        <audio id="cinemaAudio" class="hidden"></audio>
+                        <button id="cinemaUnmute" class="btn small-btn cinema-unmute hidden">🔊 Enable Sound</button>
+                    </div>
+
+                    <div id="shareStatus" class="share-status hidden"></div>
+
+                    <!-- Host media deck -->
+                    <div id="mediaDeck" class="media-deck hidden">
+                        <button id="shareScreenBtn" class="btn deck-btn">🖥️ Share Screen</button>
+                        <label class="btn deck-btn file-btn">
+                            📁 Share File
+                            <input type="file" id="shareFileInput" accept="video/*,audio/*" style="display:none">
+                        </label>
+                        <div class="url-row">
+                            <input type="url" id="mediaUrlInput" class="text-input" placeholder="Paste mp4/mp3 link…">
+                            <button id="loadUrlBtn" class="btn deck-btn">▶</button>
+                        </div>
+                        <button id="stopShareBtn" class="btn deck-btn stop-btn hidden">✖ Stop Sharing</button>
+                        <p class="tip">💡 Screen share is the cheat code: share a tab of any porn site, Cock Hero, or hypno spiral — with tab audio on. Local mp3/mp4 files stream straight from your device.</p>
+                    </div>
+
+                    <!-- Sync'd URL player controls (host) -->
+                    <div id="urlPlayerBar" class="url-player-bar hidden">
+                        <input type="range" id="cinemaVolume" min="0" max="100" value="80"> 🔊
+                    </div>
+                </div>
+
+                <!-- Cams -->
+                <div class="cams-zone">
+                    <h3 class="cams-title">ON CAM</h3>
+                    <div id="videoGrid" class="video-grid cams-column"></div>
+                </div>
+            </div>
+
+            <button id="leaveBtn" class="btn back-btn">Leave Lounge</button>
+        </div>
+    </div>
+
+    <!-- Media controls -->
+    <div id="mediaBar" class="media-bar hidden">
+        <button id="toggleMicBtn" class="media-btn" title="Toggle mic">🎤</button>
+        <button id="toggleCamBtn" class="media-btn" title="Toggle camera">📷</button>
+    </div>
+
+    <!-- Chat mount point -->
+    <div id="chatRoot"></div>
+
+    <!-- Hidden source element for local file sharing -->
+    <video id="shareSource" style="display:none" playsinline></video>
+
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="p2p.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
