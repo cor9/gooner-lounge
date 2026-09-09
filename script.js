@@ -150,6 +150,10 @@ function clearCinema(note) {
     $("cinemaUnmute").classList.add("hidden");
     $("shareStatus").classList.add("hidden");
     $("urlPlayerBar").classList.add("hidden");
+    $("shareControls").classList.add("hidden");
+    $("shareSource").pause();
+    $("shareSource").removeAttribute("src");
+    $("shareSource").load();
 }
 
 /* ============================================================
@@ -187,19 +191,30 @@ function shareFile(file) {
         p2p.startShare(capture, file.name);
         shareMode = "file";
         showSharedStream(file.name, capture);
-        // hide local preview video; sharer controls via a simple play/pause toggle
         $("stopShareBtn").classList.remove("hidden");
-        $("shareStatus").textContent = `📺 Sharing file: ${file.name} (pause = your cinema player)`;
+        $("shareControls").classList.remove("hidden");
+        $("shareStatus").textContent = `📺 Sharing file: ${file.name}`;
     }, { once: true });
 
+    src.addEventListener("timeupdate", updateShareTime);
+    src.addEventListener("play", () => { $("sharePlayPause").textContent = "⏸"; });
+    src.addEventListener("pause", () => { $("sharePlayPause").textContent = "▶"; });
     src.addEventListener("ended", () => stopSharing("File finished."), { once: true });
-    $("cinemaVideo").addEventListener("click", toggleShareSourcePlayback);
 }
 
-function toggleShareSourcePlayback() {
-    if (shareMode !== "file" || !isHost()) return;
+function fmtMediaTime(t) {
+    t = Math.max(0, Math.round(t || 0));
+    return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0");
+}
+
+function updateShareTime() {
     const src = $("shareSource");
-    src.paused ? src.play() : src.pause();
+    const seek = $("shareSeek");
+    // don't fight the user's thumb while scrubbing
+    if (!seek.matches(":active")) {
+        seek.value = src.duration ? (src.currentTime / src.duration) * 100 : 0;
+    }
+    $("shareTime").textContent = fmtMediaTime(src.currentTime) + " / " + fmtMediaTime(src.duration);
 }
 
 function stopSharing(note) {
@@ -343,6 +358,16 @@ function init() {
     $("loadUrlBtn").addEventListener("click", hostLoadUrl);
     $("mediaUrlInput").addEventListener("keydown", (e) => { if (e.key === "Enter") hostLoadUrl(); });
     $("stopShareBtn").addEventListener("click", () => stopSharing());
+
+    // File playback controls (host)
+    $("sharePlayPause").addEventListener("click", () => {
+        const src = $("shareSource");
+        src.paused ? src.play() : src.pause();
+    });
+    $("shareSeek").addEventListener("input", (e) => {
+        const src = $("shareSource");
+        if (src.duration) src.currentTime = (e.target.value / 100) * src.duration;
+    });
 
     $("cinemaUnmute").addEventListener("click", () => {
         const v = $("cinemaVideo");

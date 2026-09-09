@@ -56,6 +56,13 @@
 
                     <div id="shareStatus" class="share-status hidden"></div>
 
+                    <!-- File share playback controls (host only) -->
+                    <div id="shareControls" class="share-controls hidden">
+                        <button id="sharePlayPause" class="btn small-btn">⏸</button>
+                        <input type="range" id="shareSeek" min="0" max="100" value="0" step="0.1">
+                        <span id="shareTime" class="share-time">0:00 / 0:00</span>
+                    </div>
+
                     <!-- Host media deck -->
                     <div id="mediaDeck" class="media-deck hidden">
                         <button id="shareScreenBtn" class="btn deck-btn">🖥️ Share Screen</button>
