@@ -710,3 +710,30 @@ h1 {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
+
+/* Back-to-hub link */
+.home-link {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 100;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(20, 30, 40, 0.85);
+    border: 1px solid rgba(0, 212, 255, 0.35);
+    color: #00d4ff;
+    text-decoration: none;
+    font-size: 0.8em;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    padding: 7px 14px;
+    border-radius: 20px;
+    transition: all 0.25s;
+}
+
+.home-link:hover {
+    border-color: #00d4ff;
+    box-shadow: 0 4px 12px rgba(0, 212, 255, 0.25);
+    transform: translateY(-1px);
+}
