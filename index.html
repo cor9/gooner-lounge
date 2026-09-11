@@ -5,12 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gooner Lounge</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="club.css?v=20260911-club">
 </head>
 <body>
-    <a class="home-link" href="https://batorgames.site">🏠 All Games</a>
+    <a class="home-link" href="https://batorgames.site">← All games</a>
     <div class="container">
+<div class="club-brand"><a href="https://batorgames.site"><img src="assets/bglogo.jpg" alt="Bator Games logo" width="76" height="76"><span>BATOR GAMES<small>PULL UP A SEAT</small></span></a><span class="club-age">18+</span></div>
         <header class="lounge-header">
-            <h1>🛋️ GOONER LOUNGE</h1>
+            <h1><img class="club-game-icon" src="assets/lounge.svg" alt="" width="78" height="78">GOONER LOUNGE</h1>
             <p class="tagline">Up to 5 bros on cam + one big screen for whatever gets you there.</p>
         </header>
 
@@ -66,7 +68,9 @@
                     </div>
 
                     <!-- Host media deck -->
-                    <div id="mediaDeck" class="media-deck hidden">
+                    <details id="mediaDeck" class="media-deck hidden" open>
+                        <summary>Sharing controls <span class="deck-summary-hint">Screen · file · link</span></summary>
+                        <div class="media-deck-body">
                         <button id="shareScreenBtn" class="btn deck-btn">🖥️ Share Screen</button>
                         <label class="btn deck-btn file-btn">
                             📁 Share File
@@ -78,7 +82,8 @@
                         </div>
                         <button id="stopShareBtn" class="btn deck-btn stop-btn hidden">✖ Stop Sharing</button>
                         <p class="tip">💡 Screen share is the cheat code: share a tab of any porn site, Cock Hero, or hypno spiral — with tab audio on. Local mp3/mp4 files stream straight from your device. 🎧 While media audio plays, the sharer's mic auto-mutes to kill echo — it comes back on Stop.</p>
-                    </div>
+                        </div>
+                    </details>
 
                     <!-- Sync'd URL player controls (host) -->
                     <div id="urlPlayerBar" class="url-player-bar hidden">
@@ -99,7 +104,7 @@
 
     <!-- Media controls -->
     <div id="mediaBar" class="media-bar hidden">
-        <button id="toggleMicBtn" class="media-btn" title="Toggle mic">🎤</button>
+        <button id="toggleMicBtn" class="media-btn media-off" title="Microphone muted — click to unmute" aria-label="Unmute microphone" aria-pressed="false">🎤</button>
         <button id="toggleCamBtn" class="media-btn" title="Toggle camera">📷</button>
     </div>
 
@@ -111,8 +116,8 @@
 
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.js"></script>
-    <script src="p2p.js?v=20260911"></script>
-    <script src="lk.js"></script>
-    <script src="script.js"></script>
+    <script src="p2p.js?v=20260911-club"></script>
+    <script src="lk.js?v=20260911-club"></script>
+    <script src="script.js?v=20260911-club"></script>
 </body>
 </html>

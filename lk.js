@@ -71,9 +71,9 @@ class LKMedia {
         // fire connected BEFORE media so the game can render lobby/UI
         this.onConnected();
 
-        // Try to publish own cam+mic; failure = watch mode (no fatal)
+        // Camera only. The microphone is published only after an explicit unmute.
         try {
-            await this.room.localParticipant.enableCameraAndMicrophone();
+            await this.room.localParticipant.setCameraEnabled(true);
             this.mediaDenied = false;
         } catch (err) {
             this.mediaDenied = true;
@@ -86,11 +86,11 @@ class LKMedia {
     async retryMedia() {
         if (!this.room) return false;
         try {
-            await this.room.localParticipant.enableCameraAndMicrophone();
+            await this.room.localParticipant.setCameraEnabled(true);
         } catch (err) {
             return false;
         }
-        this.mediaDenied = true && false;
+        this.mediaDenied = false;
         this._unmountDeniedNotice();
         return true;
     }
@@ -256,11 +256,23 @@ class LKMedia {
 
     /* ---------------- controls ---------------- */
 
+    syncMicControls() {
+        const lp = this.room && this.room.localParticipant;
+        if (!lp) return;
+            document.querySelectorAll('#toggleMicBtn, #toggle-mic').forEach(button => {
+                button.classList.toggle('media-off', !lp.isMicrophoneEnabled);
+                button.setAttribute('aria-pressed', String(lp.isMicrophoneEnabled));
+                button.setAttribute('aria-label', lp.isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone');
+                button.title = lp.isMicrophoneEnabled ? 'Microphone on — click to mute' : 'Microphone muted — click to unmute';
+            });
+    }
+
     async toggleMic() {
         const lp = this.room && this.room.localParticipant;
-        if (!lp || !lp.isMicrophoneEnabled && this.mediaDenied) return false;
+        if (!lp) return false;
         try {
             await lp.setMicrophoneEnabled(!lp.isMicrophoneEnabled);
+            this.syncMicControls();
             return lp.isMicrophoneEnabled;
         } catch (_) { return false; }
     }

@@ -737,3 +737,49 @@ h1 {
     box-shadow: 0 4px 12px rgba(0, 212, 255, 0.25);
     transform: translateY(-1px);
 }
+
+/* Keep the cinema visible; tuck setup options behind a native keyboard-accessible toggle. */
+.media-deck { display:block; padding:0; border:1px solid #484052; background:#1b1a26; border-radius:10px; }
+.media-deck summary { cursor:pointer; padding:13px 16px; color:#dfcdf7; font-size:13px; font-weight:700; text-align:left; }
+.deck-summary-hint { float:right; font-size:11px; font-weight:400; color:#aaa2bc; }
+.media-deck-body { padding:0 15px 15px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.media-deck-body .url-row,.media-deck-body .tip,.media-deck-body .stop-btn { grid-column:1 / -1; }
+.media-deck .deck-btn { width:auto; margin:0; padding:10px 14px; border-radius:7px; background:#383047; color:#efdefe; box-shadow:none; border:1px solid #60506e; font-size:12px; }
+.media-deck .stop-btn { background:#512d3a; border-color:#885263; }
+.media-deck .tip { font-size:11px; line-height:1.5; margin:3px 0 0; }
+.media-deck summary:focus-visible { outline:3px solid #39e1ca; outline-offset:4px; }
+.media-deck:not([open])>.media-deck-body { display:none; }
+@media(max-width:500px) { .deck-summary-hint { display:none; } }
+
+/* The active room prioritizes the screen, with a compact room header. */
+body.lounge-active { padding:66px 20px 80px; }
+.lounge-active .container { max-width:1500px; padding:18px; }
+.lounge-active .club-brand,.lounge-active .lounge-header .tagline { display:none; }
+.lounge-active .lounge-header { margin:0 0 12px; }
+.lounge-active .lounge-header h1 { font-size:19px; justify-content:flex-start; gap:8px; margin:0; letter-spacing:-.5px; }
+.lounge-active .club-game-icon { width:34px; height:34px; }
+.lounge-active .share-bar { padding:8px 12px; margin:0 0 14px; gap:8px; min-height:42px; justify-content:flex-start; }
+.lounge-active .share-bar .share-link { display:none; }
+.lounge-active .share-actions { display:flex; gap:7px; margin:0; }
+.lounge-active .share-actions .btn { padding:6px 11px; font-size:11px; min-height:30px; margin:0; }
+.lounge-active .occupancy { font-size:11px; }
+.lounge-active .lounge-grid { grid-template-columns:minmax(0,1fr) 210px; gap:16px; }
+.lounge-active .cinema-zone,.lounge-active .cams-zone { min-width:0; }
+.lounge-active .cinema { max-height:68dvh; border-width:1px; border-color:#474153; border-radius:11px; }
+.lounge-active .cams-title { margin:0 0 8px; font-size:10px; letter-spacing:1.5px; text-align:left; }
+.lounge-active .cams-column { grid-template-columns:1fr; margin:0; max-height:68dvh; overflow:auto; gap:9px; }
+.lounge-active .video-tile { aspect-ratio:16/10; border-width:1px; }
+.lounge-active .share-status { font-size:11px; margin-top:7px; text-align:left; }
+.lounge-active .media-deck { margin-top:10px; }
+.lounge-active #leaveBtn { margin:16px 0 0; font-size:11px; padding:8px 14px; }
+@media(max-width:1100px) {
+ .lounge-active .lounge-grid { grid-template-columns:minmax(0,1fr); gap:16px; }
+ .lounge-active .cams-column { grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); max-height:none; }
+ .lounge-active .cinema { max-height:62dvh; }
+}
+@media(max-width:600px) {
+ body.lounge-active { padding:64px 8px 80px; }
+ .lounge-active .container { padding:12px; }
+ .lounge-active .cams-column { grid-auto-flow:column; grid-auto-columns:120px; grid-template-columns:none; overflow-x:auto; padding-bottom:6px; }
+ .lounge-active .cinema { max-height:55dvh; }
+}

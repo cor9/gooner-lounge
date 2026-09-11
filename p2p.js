@@ -228,6 +228,7 @@ class P2PRoom {
     async _getMedia() {
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            this.localStream.getAudioTracks().forEach(track => { track.enabled = false; });
             this.mediaDenied = false;
         } catch (err) {
             // Join anyway in watch/chat mode — no crash, show a helper banner
@@ -245,6 +246,7 @@ class P2PRoom {
         } catch (err) {
             return false;
         }
+        this.localStream.getAudioTracks().forEach(track => { track.enabled = false; });
         this.mediaDenied = false;
         this._unmountDeniedNotice();
         // Start sending cam to everyone already in the room
@@ -543,7 +545,7 @@ class P2PRoom {
         if (this._hub) this._hub.destroy();
         const wire = (hub) => {
             hub.onError = (err) => this.onError(err);
-            hub.onHostGone = () => this._scheduleHubReconnect(name);
+            hub.onHostGone = () => { this.onHubStatus("reconnecting"); this._scheduleHubReconnect(name); };
             hub.onRosterChange = (roster) => {
                 this.onHubRoster(roster);
                 if (hub.isHost) hub._broadcastDirectory();
@@ -582,6 +584,8 @@ class P2PRoom {
 
     /** Override: called with the hub roster whenever Anyone joins/leaves the hub. */
     onHubRoster(_roster) {}
+
+    onHubStatus(_status) {}
 
     /** Override: called with the live public-room directory. */
     onDirectory(_rooms) {}
@@ -641,6 +645,9 @@ class P2PRoom {
                 prefix: this.prefix,
                 code: this.roomCode,
                 title: this.roomMeta.title,
+                hostName: this.me.name,
+                hubPeerId: this._hub.me && this._hub.me.id,
+                members: this.roster.map(({ id, name }) => ({ id, name })),
                 players: this.roster.length,
                 locked: !!this.roomMeta.password,
                 maxPlayers: this.maxPeers === Infinity ? null : this.maxPeers

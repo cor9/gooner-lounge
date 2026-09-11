@@ -24,6 +24,7 @@ async function enterMediaAudioMode() {
         try {
             await lp.setMicrophoneEnabled(false);
             micMutedForMedia = true;
+            lk.syncMicControls();
             chat && chat.addMessage({ name: "", text: "🎤 Mic auto-muted while media audio is playing (anti-echo). It comes back when sharing stops.", system: true });
         } catch (_) {}
     }
@@ -31,7 +32,7 @@ async function enterMediaAudioMode() {
 
 async function exitMediaAudioMode() {
     if (!micMutedForMedia || !lk || !lk.room) { micMutedForMedia = false; return; }
-    try { await lk.room.localParticipant.setMicrophoneEnabled(true); } catch (_) {}
+    try { await lk.room.localParticipant.setMicrophoneEnabled(true); lk.syncMicControls(); } catch (_) {}
     micMutedForMedia = false;
 }
 
@@ -108,6 +109,8 @@ async function connect(asHost, code) {
     if (isHost()) $("mediaDeck").classList.remove("hidden");
     $("homeScreen").classList.add("hidden");
     $("loungeScreen").classList.remove("hidden");
+    document.body.classList.add("lounge-active");
+    $("shareLink").textContent = p2p.shareLink();
     setTiles();
     updateOccupancy();
     $("connectStatus").textContent = "";
@@ -201,6 +204,7 @@ async function shareScreen() {
     const preview = lk.localShareStream();
     if (preview) showSharedStream("your screen", preview);
     $("stopShareBtn").classList.remove("hidden");
+    $("mediaDeck").open = false;
     enterMediaAudioMode();
 }
 
@@ -225,6 +229,7 @@ function shareFile(file) {
         showSharedStream(file.name, capture);
         enterMediaAudioMode();
         $("stopShareBtn").classList.remove("hidden");
+        $("mediaDeck").open = false;
         $("shareControls").classList.remove("hidden");
         $("shareStatus").textContent = `📺 Sharing file: ${file.name}`;
     }, { once: true });
@@ -254,6 +259,7 @@ function stopSharing(note) {
     if (lk) { lk.stopScreenShare(); lk.stopShareStream(); }
     exitMediaAudioMode();
     $("stopShareBtn").classList.add("hidden");
+    $("mediaDeck").open = true;
     $("shareSource").pause();
     clearCinema(note || "Sharing stopped.");
     if (isHost()) p2p.hostBroadcast({ type: "media", op: "stop" });
@@ -272,6 +278,8 @@ function hostLoadUrl() {
     clearCinema();
     p2p.hostBroadcast({ type: "media", op: "load", src: url });
     applyMediaEvent({ op: "load", src: url });
+    $("stopShareBtn").classList.remove("hidden");
+    $("mediaDeck").open = false;
 }
 
 function isAudioUrl(url) {
