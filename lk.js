@@ -221,13 +221,16 @@ class LKMedia {
     async shareStream(mediaStream, label) {
         if (!this.room) return false;
         for (const track of mediaStream.getTracks()) {
+            // Mark video as screen-share so the SFU relays it as video to
+            // all subscribers; audio rides a dedicated ScreenShareAudio
+            // channel so it never collides with the sharer's mic.
             const localTrack = new LivekitClient.LocalTrack(track, track.kind, undefined, "share:" + label);
             await this.room.localParticipant.publishTrack(localTrack, {
                 name: "share:" + label,
-                source: track.kind === "video" ? LivekitClient.Track.Source.Unknown : LivekitClient.Track.Source.Microphone
+                source: track.kind === "video" ? LivekitClient.Track.Source.ScreenShare
+                                                : LivekitClient.Track.Source.ScreenShareAudio
             });
         }
-        // local echo label
         return true;
     }
 
