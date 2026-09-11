@@ -77,6 +77,7 @@ class P2PRoom {
         this.me = { id: this.hostId, name };
         this.roster = [this.me];
         this._wireCommon();
+        this._mountRoomBadge();
         return this.shareLink();
     }
 
@@ -104,7 +105,44 @@ class P2PRoom {
         // Connect to host; roster comes back and we mesh from there
         this._ensureData(this.hostId);
         if (this.mediaEnabled) this._ensureCall(this.hostId); // cam to host first
+        this._mountRoomBadge();
         return null;
+    }
+
+    /** Floating room-code pill (top-right) — visible for the whole session. */
+    _mountRoomBadge() {
+        if (this.prefix === "hub" || this._roomBadgeEl) return;
+        const code = this.roomCode;
+        const el = document.createElement("button");
+        el.style.cssText = `
+            position: fixed; top: 14px; right: 14px; z-index: 100;
+            display: inline-flex; align-items: center; gap: 7px;
+            background: rgba(20, 30, 40, 0.85);
+            border: 1px solid rgba(0, 212, 255, 0.35);
+            color: #00d4ff;
+            font: 600 13px/1 Arial, sans-serif; letter-spacing: 0.5px;
+            padding: 8px 14px; border-radius: 20px; cursor: pointer;
+        `;
+        el.innerHTML = `🎟️ <b>${code}</b>`;
+        el.title = "Room " + code + " — tap to copy invite link";
+        el.addEventListener("click", async () => {
+            try {
+                await navigator.clipboard.writeText(this.shareLink());
+                el.innerHTML = "✅ invite copied!";
+            } catch (_) {
+                el.innerHTML = this.shareLink();
+            }
+            setTimeout(() => { el.innerHTML = `🎟️ <b>${code}</b>`; }, 1800);
+        });
+        document.body.appendChild(el);
+        this._roomBadgeEl = el;
+    }
+
+    _unmountRoomBadge() {
+        if (this._roomBadgeEl) {
+            this._roomBadgeEl.remove();
+            this._roomBadgeEl = null;
+        }
     }
 
     shareLink() {
@@ -580,6 +618,7 @@ class P2PRoom {
 
     destroy() {
         this.stopAdvertising();
+        this._unmountRoomBadge();
         if (this._dirTimer) clearInterval(this._dirTimer);
         if (this._hub) this._hub.destroy();
         try { this.conns.forEach((c) => c.close()); this.calls.forEach((c) => c.close()); } catch (_) {}
