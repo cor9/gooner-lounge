@@ -94,6 +94,11 @@ async function connect(asHost, code) {
     });
 
     // ---- LiveKit cams & cinema (media layer) ----
+    window.LK_TILE_CONFIG = {
+        isHost: () => p2p && p2p.isHost,
+        kick: (id) => p2p.kickPeer(id),
+        selfId: () => (p2p && p2p.me && p2p.me.id) || null
+    };
     lk = new LKMedia();
     lk.onTile = (id, label, stream, isLocal) => {
         tiles.set(id, { name: label, stream, muted: isLocal });
@@ -154,6 +159,7 @@ function removeTile(peerId) {
 
 function showSharedStream(label, stream) {
     shareMode = "stream";
+    $("popCinemaBtn").classList.remove("hidden");
     $("cinemaPlaceholder").classList.add("hidden");
     $("cinemaHint") && ($("cinemaHint").textContent = "");
     const video = $("cinemaVideo");
@@ -170,6 +176,7 @@ function showSharedStream(label, stream) {
 
 function clearCinema(note) {
     shareMode = null;
+    $("popCinemaBtn").classList.add("hidden");
     const video = $("cinemaVideo");
     video.pause();
     video.srcObject = null;
@@ -390,6 +397,13 @@ function init() {
             try { await navigator.share({ title: "Gooner Lounge", text: "Pull up — goon with us:", url }); return; } catch (_) {}
         }
         try { await navigator.clipboard.writeText(url); alert("Link copied — text it to the bros!"); } catch (_) {}
+    });
+
+    $("popCinemaBtn").addEventListener("click", () => {
+        const v = $("cinemaVideo");
+        if (v && v.srcObject instanceof MediaStream) {
+            makeFloatingPiP(v.srcObject, "cinema");
+        }
     });
 
     $("shareScreenBtn").addEventListener("click", shareScreen);

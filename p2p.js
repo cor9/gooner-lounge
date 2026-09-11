@@ -46,6 +46,9 @@ class P2PRoom {
         // Presence/directory probes (data-only connections, don't join roster)
         this._probes = new Set();
 
+        // Host kick support: kicked peer ids are re-bounced if they come back
+        this._banned = new Set();
+
         // ---- callbacks (set by the game) ----
         this.onRosterChange = () => {};
         this.onHostMessage = () => {};      // peers: messages FROM host
@@ -215,6 +218,18 @@ class P2PRoom {
         if (this.peer) this.peer.destroy();
     }
 
+    /** Host: remove a peer from the room (and keep them out this session). */
+    kickPeer(peerId) {
+        if (!this.isHost || peerId === this.me.id) return;
+        const conn = this.conns.get(peerId);
+        if (conn && conn.open) conn.send({ type: "__kick" });
+        setTimeout(() => {
+            try { conn && conn.close(); } catch (_) {}
+        }, 400);
+        this._banned.add(peerId);
+        this._dropPeer(peerId);
+    }
+
     /* ---------- internals ---------- */
 
     _toggleTrack(kind) {
@@ -360,6 +375,13 @@ class P2PRoom {
 
     _wireConn(conn) {
         conn.on("open", () => {
+            // Host ban-list: previously-kicked peer coming back? bounce again
+            if (this.isHost && this._banned.has(conn.peer)) {
+                conn.send({ type: "__banned" });
+                setTimeout(() => conn.close(), 400);
+                return;
+            }
+
             // Directory probes get room info but never join the roster
             if (conn.metadata && conn.metadata.mode === "probe") {
                 this.conns.set(conn.peer, conn);
@@ -401,6 +423,13 @@ class P2PRoom {
 
         conn.on("data", (msg) => {
             if (!msg || typeof msg !== "object") return;
+            if (msg.type === "__kick" || msg.type === "__banned") {
+                alert("The host removed you from the room.");
+                this.destroy();
+                location.hash = "";
+                location.reload();
+                return;
+            }
             if (msg.type === "__denied") {
                 const err = new Error("Wrong password — that room is locked. Check the password with your host.");
                 this._finishJoin(err);
