@@ -13,6 +13,27 @@ let p2p = null;
 let chat = null;
 let shareMode = null;           // 'screen' | 'file' | 'url' | null
 let urlSyncGuard = false;       // prevents broadcast loops when applying remote events
+let micMutedForMedia = false;   // echo prevention while sharing media with audio
+
+// Kill the double-audio: room already hears media audio directly,
+// so the sharer's mic stays muted until sharing stops.
+async function enterMediaAudioMode() {
+    if (!lk || !lk.room) return;
+    const lp = lk.room.localParticipant;
+    if (lp.isMicrophoneEnabled) {
+        try {
+            await lp.setMicrophoneEnabled(false);
+            micMutedForMedia = true;
+            chat && chat.addMessage({ name: "", text: "🎤 Mic auto-muted while media audio is playing (anti-echo). It comes back when sharing stops.", system: true });
+        } catch (_) {}
+    }
+}
+
+async function exitMediaAudioMode() {
+    if (!micMutedForMedia || !lk || !lk.room) { micMutedForMedia = false; return; }
+    try { await lk.room.localParticipant.setMicrophoneEnabled(true); } catch (_) {}
+    micMutedForMedia = false;
+}
 
 const tiles = new Map(); // identity -> { name, stream, muted }
 let lk = null;
@@ -180,6 +201,7 @@ async function shareScreen() {
     const preview = lk.localShareStream();
     if (preview) showSharedStream("your screen", preview);
     $("stopShareBtn").classList.remove("hidden");
+    enterMediaAudioMode();
 }
 
 /* ============================================================
@@ -201,6 +223,7 @@ function shareFile(file) {
         await lk.shareStream(capture, file.name);
         shareMode = "file";
         showSharedStream(file.name, capture);
+        enterMediaAudioMode();
         $("stopShareBtn").classList.remove("hidden");
         $("shareControls").classList.remove("hidden");
         $("shareStatus").textContent = `📺 Sharing file: ${file.name}`;
@@ -229,6 +252,7 @@ function updateShareTime() {
 
 function stopSharing(note) {
     if (lk) { lk.stopScreenShare(); lk.stopShareStream(); }
+    exitMediaAudioMode();
     $("stopShareBtn").classList.add("hidden");
     $("shareSource").pause();
     clearCinema(note || "Sharing stopped.");
@@ -242,7 +266,8 @@ function stopSharing(note) {
 function hostLoadUrl() {
     const url = $("mediaUrlInput").value.trim();
     if (!url) return;
-    if (lk) { lk.stopScreenShare(); lk.stopShareStream(); } // cinema switches to URL player
+    if (lk) { lk.stopScreenShare(); lk.stopShareStream(); }
+    enterMediaAudioMode(); // host hears their own player too — keep the room echo-free
     shareMode = "url";
     clearCinema();
     p2p.hostBroadcast({ type: "media", op: "load", src: url });
