@@ -10,7 +10,7 @@
 
 const LK_URL = "wss://batorgames-b07ix70y.livekit.cloud";
 // Flipped to the Render URL once batorgames-livekit-token is deployed:
-const LK_TOKEN_URL = window.LK_TOKEN_URL || "http://localhost:8787/token";
+const LK_TOKEN_URL = window.LK_TOKEN_URL || "https://livekit-token-dnuo.onrender.com/token";
 
 class LKMedia {
     constructor({ url = LK_URL, tokenUrl = LK_TOKEN_URL } = {}) {
