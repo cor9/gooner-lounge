@@ -537,8 +537,24 @@ class P2PRoom {
 
     /* --- room advertising (game hosts) --- */
 
+    /**
+     * Connect to the hub in the background and start advertising this room,
+     * retrying on failure (PeerJS cloud has slow/busy days).
+     * Games call this instead of `connectHub().then(advertiseRoom)`.
+     */
+    advertiseWhenReady(attempt = 1) {
+        if (this._hub && this._advTimer) return; // already advertising
+        this.connectHub((this.me && this.me.name) || "")
+            .then(() => this.advertiseRoom())
+            .catch((err) => {
+                if (attempt >= 30) return; // ~10 min of trying, then give up quietly
+                const delay = Math.min(attempt * 5000, 30000);
+                setTimeout(() => this.advertiseWhenReady(attempt + 1), delay);
+            });
+    }
+
     advertiseRoom() {
-        if (!this.isHost || !this._hub) return;
+        if (!this.isHost || !this._hub || this._advTimer) return;
         const send = () => {
             if (!this.roomMeta.listed) return;
             this._hub.sendAll({
