@@ -52,8 +52,8 @@ async function connect(asHost, code) {
             const link = await p2p.host(name);
             $("shareLink").textContent = link;
             p2p.setRoomMeta({ title: "Gooner Lounge", password: $("passwordInput").value.trim() });
-            await p2p.connectHub(me().name);
-            p2p.advertiseRoom();
+            // hub directory connects in the background so it never blocks the room
+            p2p.connectHub(me().name).then(() => p2p.advertiseRoom());
         } else {
             $("connectStatus").textContent = "Joining lounge…";
             await p2p.join(name, code, $("passwordInput").value.trim());
