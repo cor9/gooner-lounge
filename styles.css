@@ -783,3 +783,10 @@ body.lounge-active { padding:66px 20px 80px; }
  .lounge-active .cams-column { grid-auto-flow:column; grid-auto-columns:120px; grid-template-columns:none; overflow-x:auto; padding-bottom:6px; }
  .lounge-active .cinema { max-height:55dvh; }
 }
+
+/* Media controls: top-center so overlays never bury them */
+.media-bar {
+    top: 14px;
+    bottom: auto;
+    z-index: 350;
+}
