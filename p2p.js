@@ -103,7 +103,15 @@ class P2PRoom {
         this._wireCommon();
 
         // Connect to host; roster comes back and we mesh from there
-        this._ensureData(this.hostId);
+        await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => this._finishJoin(new Error("The host did not respond. Try again or ask for a fresh room link.")), 20000);
+            this._pendingJoin = (err) => {
+                clearTimeout(timer);
+                this._pendingJoin = null;
+                if (err) reject(err); else resolve();
+            };
+            this._ensureData(this.hostId);
+        }).catch((err) => { this.destroy(); throw err; });
         if (this.mediaEnabled) this._ensureCall(this.hostId); // cam to host first
         this._mountRoomBadge();
         return null;
@@ -294,21 +302,30 @@ class P2PRoom {
         return code;
     }
 
+    _finishJoin(err) {
+        if (this._pendingJoin) this._pendingJoin(err);
+    }
+
     _waitOpen() {
+        const peer = this.peer;
         return new Promise((resolve, reject) => {
-            this.peer.on("open", () => resolve());
-            this.peer.on("error", (err) => {
-                if (err.type === "peer-unavailable") {
-                    reject(new Error("Room not found — double-check the code."));
-                } else {
-                    reject(err);
-                }
-            });
+            const finish = (err) => {
+                clearTimeout(timer);
+                peer.off("open", opened);
+                peer.off("error", failed);
+                if (err) { peer.destroy(); reject(err); } else resolve();
+            };
+            const opened = () => finish();
+            const failed = (err) => finish(err);
+            const timer = setTimeout(() => finish(new Error("Connection timed out. Please try again.")), 15000);
+            peer.on("open", opened);
+            peer.on("error", failed);
         });
     }
 
     _wireCommon() {
         this.peer.on("error", (err) => {
+            this._finishJoin(err);
             if (err.type === "peer-unavailable") {
                 this.onError(new Error("Couldn't reach a player — they may have left or the code is wrong."));
             }
@@ -362,10 +379,8 @@ class P2PRoom {
             // Room full? Politely bounce them (host only)
             if (this.isHost && this.roster.length >= this.maxPeers &&
                 !this.roster.some((p) => p.id === conn.peer)) {
-                conn.on("open", () => {
-                    conn.send({ type: "__full" });
-                    setTimeout(() => conn.close(), 500);
-                });
+                conn.send({ type: "__full" });
+                setTimeout(() => conn.close(), 500);
                 return;
             }
 
@@ -385,15 +400,20 @@ class P2PRoom {
         conn.on("data", (msg) => {
             if (!msg || typeof msg !== "object") return;
             if (msg.type === "__denied") {
-                this.onError(new Error("Wrong password — that room is locked. Check the password with your host."));
+                const err = new Error("Wrong password — that room is locked. Check the password with your host.");
+                this._finishJoin(err);
+                this.onError(err);
                 return;
             }
             if (msg.type === "__full") {
-                this.onError(new Error(`Lounge is full (${this.maxPeers} bros max). Try again later.`));
+                const err = new Error("This room is full. Try another room.");
+                this._finishJoin(err);
+                this.onError(err);
                 return;
             }
-            if (msg.type === "__roster" && !this.isHost) {
+            if (msg.type === "__roster" && !this.isHost && conn.peer === this.hostId) {
                 this.roster = msg.roster;
+                if (this.roster.some((p) => p.id === this.me.id)) this._finishJoin();
                 this.onRosterChange(this.roster);
                 this._meshFromRoster();
                 return;
@@ -425,7 +445,10 @@ class P2PRoom {
             else if (conn.peer === this.hostId) this.onHostMessage(msg);
         });
 
-        const drop = () => this._dropPeer(conn.peer);
+        const drop = () => {
+            if (conn.peer === this.hostId) this._finishJoin(new Error("The room connection closed. Please try again."));
+            this._dropPeer(conn.peer);
+        };
         conn.on("close", drop);
         conn.on("error", drop);
     }
@@ -436,7 +459,7 @@ class P2PRoom {
         if (existing && (existing.open || existing.peerConnection)) return;
         const conn = this.peer.connect(otherId, {
             reliable: true,
-            metadata: { name: this.me.name }
+            metadata: { name: this.me.name, password: otherId === this.hostId ? this.password : "" }
         });
         this._wireConn(conn);
     }
@@ -489,7 +512,7 @@ class P2PRoom {
             this.roster = this.roster.filter((p) => p.id !== peerId);
             this._fanout({ type: "__roster", roster: this.roster });
             this.onRosterChange(this.roster);
-        } else if (peerId === this.hostId) {
+        } else if (peerId === this.hostId && !this._destroyed) {
             this.onHostGone();
         }
         this.onPeerGone(peerId, name);
@@ -516,7 +539,11 @@ class P2PRoom {
      * hosts (advertising their room).
      */
     async connectHub(name = "") {
+        if (this._destroyed) throw new Error("Connection closed.");
+        if (this._hub) this._hub.destroy();
         const wire = (hub) => {
+            hub.onError = (err) => this.onError(err);
+            hub.onHostGone = () => this._scheduleHubReconnect(name);
             hub.onRosterChange = (roster) => {
                 this.onHubRoster(roster);
                 if (hub.isHost) hub._broadcastDirectory();
@@ -529,14 +556,28 @@ class P2PRoom {
         try {
             await this._hub.host(name || "Hub Host", { code: "lobby", requireMedia: false });
             this._hub._startDirectoryBroadcast();
+            this.onHubRoster(this._hub.roster);
         } catch (err) {
-            // fixed ID taken → join as a member instead
+            // Only a claimed ID means another browser owns the directory.
+            this._hub.destroy();
+            if (err.type !== "unavailable-id") throw err;
             this._hub = new P2PRoom({ prefix: "hub", requireMedia: false });
             wire(this._hub);
             await this._hub.join(name || "Gooner " + Math.floor(Math.random() * 900 + 100),
                 "lobby", "", { requireMedia: false });
         }
         return this._hub;
+    }
+
+    _scheduleHubReconnect(name) {
+        if (this._destroyed || this._hubRetry) return;
+        this._hubRetry = setTimeout(() => {
+            this._hubRetry = null;
+            this.connectHub(name).catch((err) => {
+                this.onError(err);
+                this._scheduleHubReconnect(name);
+            });
+        }, 1000 + Math.random() * 2000);
     }
 
     /** Override: called with the hub roster whenever Anyone joins/leaves the hub. */
@@ -587,7 +628,7 @@ class P2PRoom {
             .catch((err) => {
                 if (attempt >= 30) return; // ~10 min of trying, then give up quietly
                 const delay = Math.min(attempt * 5000, 30000);
-                setTimeout(() => this.advertiseWhenReady(attempt + 1), delay);
+                if (!this._destroyed) this._advRetry = setTimeout(() => this.advertiseWhenReady(attempt + 1), delay);
             });
     }
 
@@ -595,7 +636,7 @@ class P2PRoom {
         if (!this.isHost || !this._hub || this._advTimer) return;
         const send = () => {
             if (!this.roomMeta.listed) return;
-            this._hub.sendAll({
+            const beacon = {
                 type: "__roomBeacon",
                 prefix: this.prefix,
                 code: this.roomCode,
@@ -603,7 +644,9 @@ class P2PRoom {
                 players: this.roster.length,
                 locked: !!this.roomMeta.password,
                 maxPlayers: this.maxPeers === Infinity ? null : this.maxPeers
-            });
+            };
+            if (this._hub.isHost) this._hub._directoryUpdate(beacon);
+            else this._hub.sendToHost(beacon);
         };
         send();
         this._advTimer = setInterval(send, 15000);
@@ -617,6 +660,10 @@ class P2PRoom {
     }
 
     destroy() {
+        this._destroyed = true;
+        clearTimeout(this._hubRetry);
+        clearTimeout(this._advRetry);
+        this._finishJoin(new Error("Connection closed."));
         this.stopAdvertising();
         this._unmountRoomBadge();
         if (this._dirTimer) clearInterval(this._dirTimer);
