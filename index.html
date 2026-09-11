@@ -19,6 +19,7 @@
             <div class="panel">
                 <h2>🎭 Your Goon Name</h2>
                 <input type="text" id="nameInput" class="text-input name-input" placeholder="What do the bros call you?" maxlength="16">
+                <input type="text" id="passwordInput" class="text-input name-input" placeholder="Room password (blank = public + hidden)" maxlength="24">
                 <p class="tip">📹 Cams stream browser-to-browser — nothing is uploaded to any server.</p>
             </div>
             <div class="home-actions">
@@ -109,7 +110,9 @@
     <video id="shareSource" style="display:none" playsinline></video>
 
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.js"></script>
     <script src="p2p.js"></script>
+    <script src="lk.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

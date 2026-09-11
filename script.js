@@ -14,7 +14,8 @@ let chat = null;
 let shareMode = null;           // 'screen' | 'file' | 'url' | null
 let urlSyncGuard = false;       // prevents broadcast loops when applying remote events
 
-const remoteStreams = new Map();
+const tiles = new Map(); // identity -> { name, stream, muted }
+let lk = null;
 
 const $ = (id) => document.getElementById(id);
 const me = () => p2p && p2p.me;
@@ -28,12 +29,9 @@ async function connect(asHost, code) {
     const name = $("nameInput").value.trim() || "Gooner " + Math.floor(Math.random() * 90 + 10);
     $("connectStatus").textContent = "Getting your cam ready…";
 
-    p2p = new P2PRoom({ prefix: ROOM_PREFIX, maxPeers: MAX_PEERS });
+    p2p = new P2PRoom({ prefix: ROOM_PREFIX, maxPeers: MAX_PEERS, requireMedia: false });
     p2p.onRosterChange = updateOccupancy;
-    p2p.onStream = (id, who, stream) => { remoteStreams.set(id, stream); addTile(id, who, stream, false); };
-    p2p.onStreamRemoved = (id) => { remoteStreams.delete(id); removeTile(id); };
-    p2p.onShareStream = (label, stream) => showSharedStream(label, stream);
-    p2p.onShareRemoved = () => clearCinema("Host stopped sharing.");
+    p2p.onShareRemoved = () => {}; // superseded by lk share events
     p2p.onPeerGone = (id, who) => {
         chat && chat.addMessage({ name: "", text: `${who} left the lounge`, system: true });
         updateOccupancy();
@@ -53,9 +51,12 @@ async function connect(asHost, code) {
         if (asHost) {
             const link = await p2p.host(name);
             $("shareLink").textContent = link;
+            p2p.setRoomMeta({ title: "Gooner Lounge", password: $("passwordInput").value.trim() });
+            await p2p.connectHub(me().name);
+            p2p.advertiseRoom();
         } else {
             $("connectStatus").textContent = "Joining lounge…";
-            await p2p.join(name, code);
+            await p2p.join(name, code, $("passwordInput").value.trim());
         }
     } catch (err) {
         $("connectStatus").textContent = "⚠️ " + (err.message || "Could not connect.");
@@ -69,6 +70,18 @@ async function connect(asHost, code) {
             chat.addMessage({ name: me().name, text, self: true });
         }
     });
+
+    // ---- LiveKit cams & cinema (media layer) ----
+    lk = new LKMedia();
+    lk.onTile = (id, label, stream, isLocal) => {
+        tiles.set(id, { name: label, stream, muted: isLocal });
+        addTile(id, label, stream, isLocal);
+    };
+    lk.onRemoveTile = (id) => { tiles.delete(id); removeTile(id); };
+    lk.onShare = (label, stream) => showSharedStream(label, stream);
+    lk.onShareEnd = () => clearCinema("Sharing ended.");
+    lk.onError = (err) => { $("connectStatus").textContent = "⚠️ " + err.message; };
+    await lk.connect(p2p.hostId, p2p.me.id, name);
 
     $("mediaBar").classList.remove("hidden");
     if (isHost()) $("mediaDeck").classList.remove("hidden");
@@ -89,10 +102,7 @@ function updateOccupancy() {
 
 function setTiles() {
     $("videoGrid").innerHTML = "";
-    addTile(me().id, me().name + " (you)", p2p.localStream, true);
-    p2p.roster.forEach((p) => {
-        if (p.id !== me().id && remoteStreams.has(p.id)) addTile(p.id, p.name, remoteStreams.get(p.id), false);
-    });
+    tiles.forEach((t, id) => addTile(id, t.name, t.stream, t.muted));
 }
 
 function addTile(peerId, label, stream, muted) {
@@ -161,15 +171,15 @@ function clearCinema(note) {
    ============================================================ */
 
 async function shareScreen() {
-    try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-        p2p.startShare(stream, "screen share");
-        shareMode = "screen";
-        showSharedStream("your screen", stream); // local preview
-        $("stopShareBtn").classList.remove("hidden");
-    } catch (err) {
+    const ok = lk && await lk.shareScreen();
+    if (!ok) {
         chat && chat.addMessage({ name: "", text: "Screen share was cancelled.", system: true });
+        return;
     }
+    shareMode = "screen";
+    const preview = lk.localShareStream();
+    if (preview) showSharedStream("your screen", preview);
+    $("stopShareBtn").classList.remove("hidden");
 }
 
 /* ============================================================
@@ -181,14 +191,14 @@ function shareFile(file) {
     src.src = URL.createObjectURL(file);
     src.loop = false;
 
-    src.addEventListener("loadedmetadata", () => {
+    src.addEventListener("loadedmetadata", async () => {
         const capture = src.captureStream ? src.captureStream() : (src.mozCaptureStream ? src.mozCaptureStream() : null);
         if (!capture) {
             alert("Your browser can't stream local media files. Try Chrome.");
             return;
         }
         src.play();
-        p2p.startShare(capture, file.name);
+        await lk.shareStream(capture, file.name);
         shareMode = "file";
         showSharedStream(file.name, capture);
         $("stopShareBtn").classList.remove("hidden");
@@ -218,7 +228,7 @@ function updateShareTime() {
 }
 
 function stopSharing(note) {
-    p2p.stopShare();
+    if (lk) { lk.stopScreenShare(); lk.stopShareStream(); }
     $("stopShareBtn").classList.add("hidden");
     $("shareSource").pause();
     clearCinema(note || "Sharing stopped.");
@@ -232,7 +242,7 @@ function stopSharing(note) {
 function hostLoadUrl() {
     const url = $("mediaUrlInput").value.trim();
     if (!url) return;
-    p2p.stopShare(); // screen/file share loses the cinema
+    if (lk) { lk.stopScreenShare(); lk.stopShareStream(); } // cinema switches to URL player
     shareMode = "url";
     clearCinema();
     p2p.hostBroadcast({ type: "media", op: "load", src: url });
@@ -383,12 +393,12 @@ function init() {
         el.volume = e.target.value / 100;
     });
 
-    $("toggleMicBtn").addEventListener("click", () => {
-        const on = p2p && p2p.toggleMic();
+    $("toggleMicBtn").addEventListener("click", async () => {
+        const on = lk ? await lk.toggleMic() : false;
         $("toggleMicBtn").classList.toggle("media-off", !on);
     });
-    $("toggleCamBtn").addEventListener("click", () => {
-        const on = p2p && p2p.toggleCam();
+    $("toggleCamBtn").addEventListener("click", async () => {
+        const on = lk ? await lk.toggleCam() : false;
         $("toggleCamBtn").classList.toggle("media-off", !on);
     });
 

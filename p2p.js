@@ -14,10 +14,11 @@ const ICE_SERVERS = [
 ];
 
 class P2PRoom {
-    constructor({ prefix = "bg", maxVideoTiles = 6, maxPeers = Infinity } = {}) {
+    constructor({ prefix = "bg", maxVideoTiles = 6, maxPeers = Infinity, requireMedia = true } = {}) {
         this.prefix = prefix;
         this.maxVideoTiles = maxVideoTiles;
         this.maxPeers = maxPeers;
+        this.mediaEnabled = requireMedia;
 
         this.peer = null;
         this.me = null;            // { id, name }
@@ -35,6 +36,16 @@ class P2PRoom {
         this.shareLabel = null;
         this.shareCalls = new Map(); // peerId -> MediaConnection
 
+        // Camera/mic denial handling (joiners without cam still join)
+        this.mediaDenied = false;
+        this._deniedNoticeEl = null;
+
+        // Room metadata (hub directory + optional password)
+        this.roomMeta = { title: "", password: "", listed: true };
+
+        // Presence/directory probes (data-only connections, don't join roster)
+        this._probes = new Set();
+
         // ---- callbacks (set by the game) ----
         this.onRosterChange = () => {};
         this.onHostMessage = () => {};      // peers: messages FROM host
@@ -44,6 +55,7 @@ class P2PRoom {
         this.onStreamRemoved = () => {};    // (peerId)
         this.onShareStream = () => {};      // (label, MediaStream) — peers: host started sharing
         this.onShareRemoved = () => {};     // share ended
+        this.onLocalStreamReady = () => {}; // (MediaStream) — fired when media arrives (initial deny + later allow)
         this.onPeerGone = () => {};         // (peerId, name)
         this.onHostGone = () => {};
         this.onError = () => {};
@@ -51,10 +63,14 @@ class P2PRoom {
 
     /* ---------- public API ---------- */
 
-    async host(name) {
-        await this._getMedia();
+    /**
+     * Host a room. options.code pins a specific room code (hub presence).
+     */
+    async host(name, options = {}) {
+        if (options.requireMedia === false) this.mediaEnabled = false;
+        if (this.mediaEnabled) await this._getMedia();
         this.isHost = true;
-        this.roomCode = this._randomCode();
+        this.roomCode = (options.code || this._randomCode()).toLowerCase();
         this.hostId = `${this.prefix}-${this.roomCode}`;
         this.peer = new Peer(this.hostId, { config: { iceServers: ICE_SERVERS } });
         await this._waitOpen();
@@ -64,11 +80,22 @@ class P2PRoom {
         return this.shareLink();
     }
 
-    async join(name, code) {
-        await this._getMedia();
+    /** Set room title/password. Empty password = public + listed on hub. */
+    setRoomMeta({ title = "", password = "", listed } = {}) {
+        this.roomMeta = {
+            title,
+            password,
+            listed: listed !== undefined ? !!listed : !password
+        };
+    }
+
+    async join(name, code, password = "", options = {}) {
+        if (options.requireMedia === false) this.mediaEnabled = false;
+        if (this.mediaEnabled) await this._getMedia();
         this.isHost = false;
         this.roomCode = code.toLowerCase();
         this.hostId = `${this.prefix}-${this.roomCode}`;
+        this.password = password;
         this.peer = new Peer({ config: { iceServers: ICE_SERVERS } });
         await this._waitOpen();
         this.me = { id: this.peer.id, name };
@@ -76,7 +103,7 @@ class P2PRoom {
 
         // Connect to host; roster comes back and we mesh from there
         this._ensureData(this.hostId);
-        this._ensureCall(this.hostId); // always call the host so they see/hear us ASAP
+        if (this.mediaEnabled) this._ensureCall(this.hostId); // cam to host first
         return null;
     }
 
@@ -153,7 +180,73 @@ class P2PRoom {
     }
 
     async _getMedia() {
-        this.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            this.mediaDenied = false;
+        } catch (err) {
+            // Join anyway in watch/chat mode — no crash, show a helper banner
+            this.localStream = null;
+            this.mediaDenied = true;
+            console.warn("[p2p] camera/mic not granted:", err.name, err.message);
+            this._mountDeniedNotice(err);
+        }
+    }
+
+    /** Retry after the user flips the browser permission. Called from the banner button. */
+    async retryMedia() {
+        try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        } catch (err) {
+            return false;
+        }
+        this.mediaDenied = false;
+        this._unmountDeniedNotice();
+        // Start sending cam to everyone already in the room
+        this.roster.forEach((p) => {
+            if (p.id !== this.me.id && this.me.id < p.id) this._ensureCall(p.id);
+        });
+        this._ensureCall(this.hostId);
+        this.onLocalStreamReady(this.localStream);
+        return true;
+    }
+
+    _mountDeniedNotice(err) {
+        this._unmountDeniedNotice();
+        const el = document.createElement("div");
+        el.style.cssText = `
+            position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+            z-index: 200; max-width: 92vw;
+            background: rgba(120, 30, 30, 0.95); color: #fff;
+            border: 2px solid #ff6b6b; border-radius: 12px;
+            padding: 10px 14px; font: 600 13px/1.4 Arial, sans-serif;
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        `;
+        const span = document.createElement("span");
+        span.textContent = "📷 Camera blocked — you're in watch mode. Click the 🔒 icon in your address bar, allow Camera + Microphone, then:";
+        const btn = document.createElement("button");
+        btn.textContent = "Enable Cam";
+        btn.style.cssText = `
+            background: linear-gradient(135deg,#00d4ff,#2b7780); color:#fff;
+            border:none; border-radius:16px; padding:7px 16px;
+            font:600 13px Arial,sans-serif; cursor:pointer;
+        `;
+        btn.addEventListener("click", async () => {
+            btn.textContent = "Asking…";
+            const ok = await this.retryMedia();
+            if (!ok) btn.textContent = "Still blocked — check browser settings";
+        });
+        el.appendChild(span);
+        el.appendChild(btn);
+        document.body.appendChild(el);
+        this._deniedNoticeEl = el;
+    }
+
+    _unmountDeniedNotice() {
+        if (this._deniedNoticeEl) {
+            this._deniedNoticeEl.remove();
+            this._deniedNoticeEl = null;
+        }
     }
 
     _randomCode() {
@@ -188,7 +281,7 @@ class P2PRoom {
 
         // Incoming video call
         this.peer.on("call", (call) => {
-            call.answer(this.localStream);
+            call.answer(this.localStream || new MediaStream());
 
             // Host media-share calls are flagged in metadata
             if (call.metadata && call.metadata.kind === "share") {
@@ -210,6 +303,24 @@ class P2PRoom {
 
     _wireConn(conn) {
         conn.on("open", () => {
+            // Directory probes get room info but never join the roster
+            if (conn.metadata && conn.metadata.mode === "probe") {
+                this.conns.set(conn.peer, conn);
+                this._probes.add(conn.peer);
+                return;
+            }
+
+            // Password rooms: bounce wrong/no password (host only)
+            if (this.isHost && this.roomMeta.password &&
+                !this.roster.some((p) => p.id === conn.peer)) {
+                const supplied = (conn.metadata && conn.metadata.password) || "";
+                if (supplied !== this.roomMeta.password) {
+                    conn.send({ type: "__denied", reason: "password" });
+                    setTimeout(() => conn.close(), 500);
+                    return;
+                }
+            }
+
             // Room full? Politely bounce them (host only)
             if (this.isHost && this.roster.length >= this.maxPeers &&
                 !this.roster.some((p) => p.id === conn.peer)) {
@@ -235,6 +346,10 @@ class P2PRoom {
 
         conn.on("data", (msg) => {
             if (!msg || typeof msg !== "object") return;
+            if (msg.type === "__denied") {
+                this.onError(new Error("Wrong password — that room is locked. Check the password with your host."));
+                return;
+            }
             if (msg.type === "__full") {
                 this.onError(new Error(`Lounge is full (${this.maxPeers} bros max). Try again later.`));
                 return;
@@ -245,6 +360,28 @@ class P2PRoom {
                 this._meshFromRoster();
                 return;
             }
+            if (msg.type === "__roomQuery" && this.isHost) {
+                conn.send({
+                    type: "__roomInfo",
+                    prefix: this.prefix,
+                    code: this.roomCode,
+                    title: this.roomMeta.title,
+                    players: this._playerCount(),
+                    maxPlayers: this.maxPeers === Infinity ? null : this.maxPeers,
+                    locked: !!this.roomMeta.password
+                });
+                return;
+            }
+            if (msg.type === "__roomInfo") { this.onAnyMessage(conn.peer, msg); return; }
+            if (msg.type === "__roomBeacon" && this.isHost && this.prefix === "hub") {
+                this._directoryUpdate(msg);
+                return;
+            }
+            if (msg.type === "__directory" && !this.isHost) {
+                this.onDirectory(msg.rooms || []);
+                return;
+            }
+
             this.onAnyMessage(conn.peer, msg);
             if (this.isHost) this.onPeerMessage(conn.peer, this._nameFor(conn.peer), msg);
             else if (conn.peer === this.hostId) this.onHostMessage(msg);
@@ -267,9 +404,12 @@ class P2PRoom {
     }
 
     _ensureCall(otherId) {
-        if (otherId === this.me.id || !this.localStream) return;
+        if (!this.mediaEnabled) return;
+        if (otherId === this.me.id) return;
         if (this.calls.has(otherId)) return;
-        const call = this.peer.call(otherId, this.localStream);
+        // Empty stream when cam is denied — we still RECEIVE their video
+        const stream = this.localStream || new MediaStream();
+        const call = this.peer.call(otherId, stream);
         this.calls.set(otherId, call);
         call.on("stream", (remote) => this.onStream(otherId, this._nameFor(otherId), remote));
         call.on("close", () => this._dropCall(otherId));
@@ -323,6 +463,113 @@ class P2PRoom {
     }
 
     _anonName() { return "Gooner " + Math.floor(Math.random() * 90 + 10); }
+
+    /* ============ Hub presence + room directory (beacons) ============ */
+
+    _playerCount() {
+        // probes never join the roster, so roster length is accurate
+        return this.roster.length;
+    }
+
+    /**
+     * Connect to the global "hub" presence room. Whoever grabs the fixed
+     * room ID becomes the hub host (directory keeper); everyone else joins.
+     * Used by: landing visitors (presence count + room directory) and game
+     * hosts (advertising their room).
+     */
+    async connectHub(name = "") {
+        const wire = (hub) => {
+            hub.onRosterChange = (roster) => {
+                this.onHubRoster(roster);
+                if (hub.isHost) hub._broadcastDirectory();
+            };
+            hub.onDirectory = (rooms) => this.onDirectory(rooms);
+        };
+
+        this._hub = new P2PRoom({ prefix: "hub", requireMedia: false });
+        wire(this._hub);
+        try {
+            await this._hub.host(name || "Hub Host", { code: "lobby", requireMedia: false });
+            this._hub._startDirectoryBroadcast();
+        } catch (err) {
+            // fixed ID taken → join as a member instead
+            this._hub = new P2PRoom({ prefix: "hub", requireMedia: false });
+            wire(this._hub);
+            await this._hub.join(name || "Gooner " + Math.floor(Math.random() * 900 + 100),
+                "lobby", "", { requireMedia: false });
+        }
+        return this._hub;
+    }
+
+    /** Override: called with the hub roster whenever Anyone joins/leaves the hub. */
+    onHubRoster(_roster) {}
+
+    /** Override: called with the live public-room directory. */
+    onDirectory(_rooms) {}
+
+    /* --- hub-host internals --- */
+
+    _startDirectoryBroadcast() {
+        this._directory = this._directory || new Map();
+        this._dirTimer = setInterval(() => this._broadcastDirectory(), 10000);
+        this._broadcastDirectory();
+    }
+
+    _directoryUpdate(beacon) {
+        if (!this._directory) this._directory = new Map();
+        const key = `${beacon.prefix}-${beacon.code}`;
+        if ((beacon.players || 0) <= 0) this._directory.delete(key);
+        else this._directory.set(key, { ...beacon, seenAt: Date.now() });
+        this._broadcastDirectory();
+    }
+
+    _broadcastDirectory() {
+        if (!this._directory) return;
+        const now = Date.now();
+        // prune rooms silent for >60s
+        for (const [key, r] of this._directory) {
+            if (now - (r.seenAt || 0) > 60000) this._directory.delete(key);
+        }
+        const rooms = [...this._directory.values()];
+        this._fanout({ type: "__directory", rooms });
+        if (typeof this.onDirectory === "function") this.onDirectory(rooms);
+    }
+
+    /* --- room advertising (game hosts) --- */
+
+    advertiseRoom() {
+        if (!this.isHost || !this._hub) return;
+        const send = () => {
+            if (!this.roomMeta.listed) return;
+            this._hub.sendAll({
+                type: "__roomBeacon",
+                prefix: this.prefix,
+                code: this.roomCode,
+                title: this.roomMeta.title,
+                players: this.roster.length,
+                locked: !!this.roomMeta.password,
+                maxPlayers: this.maxPeers === Infinity ? null : this.maxPeers
+            });
+        };
+        send();
+        this._advTimer = setInterval(send, 15000);
+        // Re-beacon whenever the roster changes so player counts stay fresh
+        const prev = this.onRosterChange;
+        this.onRosterChange = (roster) => { prev(roster); send(); };
+    }
+
+    stopAdvertising() {
+        if (this._advTimer) clearInterval(this._advTimer);
+    }
+
+    destroy() {
+        this.stopAdvertising();
+        if (this._dirTimer) clearInterval(this._dirTimer);
+        if (this._hub) this._hub.destroy();
+        try { this.conns.forEach((c) => c.close()); this.calls.forEach((c) => c.close()); } catch (_) {}
+        if (this.localStream) this.localStream.getTracks().forEach((t) => t.stop());
+        if (this.peer) this.peer.destroy();
+    }
 }
 
 /* ============================================================
