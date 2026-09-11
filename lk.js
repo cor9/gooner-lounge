@@ -54,7 +54,7 @@ class LKMedia {
             if (!res.ok) throw new Error("token service returned " + res.status);
             token = (await res.json()).token;
         } catch (err) {
-            this.onError(new Error("Couldn't get a cam token (token service asleep?). Try again in 30s if this is the first join of the day."));
+            this.onError(new Error("Couldn't get a cam token. Wait a few seconds and try again."));
             return false;
         }
 
