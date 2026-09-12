@@ -49,6 +49,10 @@ class P2PRoom {
         // Host kick support: kicked peer ids are re-bounced if they come back
         this._banned = new Set();
 
+        // Hub heartbeat state: members ping, the host reaps ghosts fast
+        this._lastSeen = new Map();  // peerId -> timestamp (host side, hub-only)
+        this._hbInterval = null;
+
         // ---- callbacks (set by the game) ----
         this.onRosterChange = () => {};
         this.onHostMessage = () => {};      // peers: messages FROM host
@@ -449,6 +453,10 @@ class P2PRoom {
                 this._meshFromRoster();
                 return;
             }
+            if (msg.type === "__hb" && this.isHost && this.prefix === "hub") {
+                this._lastSeen.set(conn.peer, Date.now());
+                return;
+            }
             if (msg.type === "__roomQuery" && this.isHost) {
                 conn.send({
                     type: "__roomInfo",
@@ -587,6 +595,7 @@ class P2PRoom {
         try {
             await this._hub.host(name || "Hub Host", { code: "lobby", requireMedia: false });
             this._hub._startDirectoryBroadcast();
+            this._hub._startGhostReaper();
             this.onHubRoster(this._hub.roster);
         } catch (err) {
             // Only a claimed ID means another browser owns the directory.
@@ -597,6 +606,7 @@ class P2PRoom {
             await this._hub.join(name || "Gooner " + Math.floor(Math.random() * 900 + 100),
                 "lobby", "", { requireMedia: false });
         }
+        this._hub._startHeartbeatPing();
         return this._hub;
     }
 
@@ -703,6 +713,8 @@ class P2PRoom {
         this.stopAdvertising();
         this._unmountRoomBadge();
         if (this._dirTimer) clearInterval(this._dirTimer);
+        if (this._hbInterval) clearInterval(this._hbInterval);
+        if (this._hbSweep) clearInterval(this._hbSweep);
         if (this._hub) this._hub.destroy();
         try { this.conns.forEach((c) => c.close()); this.calls.forEach((c) => c.close()); } catch (_) {}
         if (this.localStream) this.localStream.getTracks().forEach((t) => t.stop());
