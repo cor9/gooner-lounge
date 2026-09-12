@@ -637,6 +637,36 @@ class P2PRoom {
         this._broadcastDirectory();
     }
 
+    /* --- hub heartbeat: kill stale roster entries within ~45s --- */
+
+    _startGhostReaper() {
+        if (this.prefix !== "hub" || !this.isHost) return;
+        this._lastSeen.set(this.me.id, Date.now());
+        this._hbSweep = setInterval(() => {
+            const now = Date.now();
+            const before = this.roster.length;
+            this.roster = this.roster.filter((p) => {
+                if (p.id === this.me.id) { this._lastSeen.set(p.id, now); return true; }
+                const last = this._lastSeen.get(p.id) || 0;
+                const conn = this.conns.get(p.id);
+                // keep only members with a recent heartbeat AND an open data conn
+                return conn && conn.open && now - last < 45000;
+            });
+            if (this.roster.length !== before) {
+                this._fanout({ type: "__roster", roster: this.roster });
+                this.onRosterChange(this.roster);
+                if (this._broadcastDirectory) this._broadcastDirectory();
+            }
+        }, 10000);
+    }
+
+    _startHeartbeatPing() {
+        if (this.prefix !== "hub" || this.isHost) return;
+        const ping = () => this.sendAll({ type: "__hb" });
+        this._hbInterval = setInterval(ping, 10000);
+        setTimeout(ping, 2500); // announce yourself soon after joining
+    }
+
     _directoryUpdate(beacon) {
         if (!this._directory) this._directory = new Map();
         const key = `${beacon.prefix}-${beacon.code}`;
