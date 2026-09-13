@@ -82,6 +82,8 @@ class LKMedia {
             this.onError(new Error("Couldn't connect to the cam service."));
             return false;
         }
+        window.__lk = this.room; // dev/probe handle
+        console.log("[lk] connected:", this.room.state, "| participants:", this.room.remoteParticipants.size + 1);
 
         // fire connected BEFORE media so the game can render lobby/UI
         this.onConnected();
