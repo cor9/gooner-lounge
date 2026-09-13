@@ -35,13 +35,20 @@ class LKMedia {
         this.onConnected = () => {};
         this.onError = () => {};
         this.onData = () => {};        // (fromIdentity, payloadObj) — room data channel
+        this._connected = false;
+        this._sendQueue = [];          // payloads buffered until the room connects
     }
 
     /* ---------- reliable room data (chat + game sync) ---------- */
 
-    /** Send a JSON payload to everyone in the room, reliably. */
+    /** Send a JSON payload to everyone in the room, reliably.
+     *  Messages sent before the room connects are queued and flushed on connect,
+     *  so a fast host click can never silently lose the start/spin/state event. */
     async sendToAll(obj) {
-        if (!this.room) return;
+        if (!this.room || !this._connected) {
+            if (this._sendQueue.length < 200) this._sendQueue.push(obj);
+            return;
+        }
         const encoder = new TextEncoder();
         const bytes = encoder.encode(JSON.stringify(obj));
         try {
@@ -49,6 +56,11 @@ class LKMedia {
         } catch (err) {
             console.warn("[lk] publishData failed:", err.message);
         }
+    }
+
+    async _flushQueue() {
+        const queued = this._sendQueue.splice(0);
+        for (const obj of queued) await this.sendToAll(obj);
     }
 
     isCamTrack(pub) {
@@ -62,6 +74,17 @@ class LKMedia {
         this.identity = identity;
         this.displayName = displayName;
 
+        // One automatic retry covers a sleepy token service or SFU hiccup —
+        // before this, a failed connect silently dropped every game event.
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            if (await this._connectOnce(roomName)) return true;
+            if (attempt < 2) await new Promise((r) => setTimeout(r, 3000));
+        }
+        return false;
+    }
+
+    async _connectOnce(roomName) {
+        const identity = this.identity, displayName = this.displayName;
         let token;
         try {
             const params = new URLSearchParams({ room: roomName, identity, name: displayName });
@@ -84,6 +107,8 @@ class LKMedia {
         }
         window.__lk = this.room; // dev/probe handle
         console.log("[lk] connected:", this.room.state, "| participants:", this.room.remoteParticipants.size + 1);
+        this._connected = true;
+        await this._flushQueue();
 
         // fire connected BEFORE media so the game can render lobby/UI
         this.onConnected();
