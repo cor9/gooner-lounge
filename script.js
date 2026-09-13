@@ -396,8 +396,8 @@ function init() {
         if (navigator.share) {
             try { await navigator.share({ title: "Gooner Lounge", text: "Pull up — goon with us:", url }); return; } catch (_) {}
         }
-        try { await navigator.clipboard.writeText(url); alert("Link copied — text it to the bros!"); } catch (_) {}
-    
+        try { await navigator.clipboard.writeText(url); alert("Link copied — text it to the bros!"); } catch (_) {} });
+
 
     // Save this room as MY permanent link (device-local)
     $("saveRoomBtn") && $("saveRoomBtn").addEventListener("click", () => {
@@ -412,7 +412,7 @@ function init() {
         $("saveRoomBtn").textContent = "🔖 Saved! This is YOUR link now";
         $("saveRoomBtn").style.borderColor = "#3dff73";
         setTimeout(() => { $("saveRoomBtn").textContent = "🔖 Permanent Link"; }, 2500);
-    });});
+    });
 
     $("popCinemaBtn").addEventListener("click", () => {
         const v = $("cinemaVideo");
