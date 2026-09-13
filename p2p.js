@@ -581,7 +581,13 @@ class P2PRoom {
         if (this._destroyed) throw new Error("Connection closed.");
         if (this._hub) this._hub.destroy();
         const wire = (hub) => {
-            hub.onError = (err) => this.onError(err);
+            hub.onError = (err) => {
+                this.onError(err);
+                // A dead/zombie hub host on the broker: revive instead of giving up.
+                // If we keep trying long enough, one participant will eventually host
+                // the directory themselves and the room beacons can flow again.
+                if (err && err.type === "peer-unavailable") this._scheduleHubReconnect(name);
+            };
             hub.onHostGone = () => { this.onHubStatus("reconnecting"); this._scheduleHubReconnect(name); };
             hub.onRosterChange = (roster) => {
                 this.onHubRoster(roster);
