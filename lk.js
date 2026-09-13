@@ -34,6 +34,21 @@ class LKMedia {
         this.onShareEnd = () => {};
         this.onConnected = () => {};
         this.onError = () => {};
+        this.onData = () => {};        // (fromIdentity, payloadObj) — room data channel
+    }
+
+    /* ---------- reliable room data (chat + game sync) ---------- */
+
+    /** Send a JSON payload to everyone in the room, reliably. */
+    async sendToAll(obj) {
+        if (!this.room) return;
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(JSON.stringify(obj));
+        try {
+            await this.room.localParticipant.publishData(bytes, { reliable: true });
+        } catch (err) {
+            console.warn("[lk] publishData failed:", err.message);
+        }
     }
 
     isCamTrack(pub) {
@@ -99,6 +114,15 @@ class LKMedia {
 
     _wireEvents() {
         const RoomEvent = LivekitClient.RoomEvent;
+
+        // Room data channel — one pipe for chat + game state
+        const decoder = new TextDecoder();
+        this.room.on(RoomEvent.DataReceived, (payload, participant) => {
+            try {
+                const msg = JSON.parse(decoder.decode(payload));
+                this.onData(participant ? participant.identity : "?", msg);
+            } catch (_) { /* ignore malformed data */ }
+        });
 
         this.room.on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
             const identity = participant.identity;

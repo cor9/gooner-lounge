@@ -63,10 +63,8 @@ async function connect(asHost, code) {
         location.hash = "";
         location.reload();
     };
-    p2p.onHostMessage = onHostMessage;
-    p2p.onAnyMessage = (peerId, msg) => {
-        if (msg && msg.type === "chat") chat && chat.addMessage({ name: msg.name, text: msg.text, self: false });
-    };
+    p2p.onHostMessage = () => {};
+    p2p.onAnyMessage = () => {};
     p2p.onError = (err) => { $("connectStatus").textContent = "⚠️ " + err.message; };
 
     try {
@@ -88,7 +86,7 @@ async function connect(asHost, code) {
     chat = mountChatUI($("chatRoot"), {
         selfName: name,
         onSend: (text) => {
-            p2p.sendAll({ type: "chat", name: me().name, text });
+            lk && lk.sendToAll({ type: 'chat', name: me().name, text });
             chat.addMessage({ name: me().name, text, self: true });
         }
     });
@@ -108,6 +106,17 @@ async function connect(asHost, code) {
     lk.onShare = (label, stream) => showSharedStream(label, stream);
     lk.onShareEnd = () => clearCinema("Sharing ended.");
     lk.onError = (err) => { $("connectStatus").textContent = "⚠️ " + err.message; };
+
+    // LiveKit data pipe: chat + URL-media sync replaces PeerJS for live events
+    lk.onData = (fromId, msg) => {
+        if (!msg || typeof msg !== "object" || !chat) return;
+        if (msg.type === "chat") {
+            chat.addMessage({ name: msg.name, text: msg.text, self: msg.name === (me() && me().name) });
+            return;
+        }
+        if (msg.type === "media" && !isHost()) applyMediaEvent(msg);
+    };
+
     await lk.connect(p2p.hostId, p2p.me.id, name);
 
     $("mediaBar").classList.remove("hidden");
@@ -269,7 +278,7 @@ function stopSharing(note) {
     $("mediaDeck").open = true;
     $("shareSource").pause();
     clearCinema(note || "Sharing stopped.");
-    if (isHost()) p2p.hostBroadcast({ type: "media", op: "stop" });
+    if (isHost()) lk && lk.sendToAll({ type: "media", op: "stop" });
 }
 
 /* ============================================================
@@ -283,7 +292,7 @@ function hostLoadUrl() {
     enterMediaAudioMode(); // host hears their own player too — keep the room echo-free
     shareMode = "url";
     clearCinema();
-    p2p.hostBroadcast({ type: "media", op: "load", src: url });
+    lk && lk.sendToAll({ type: "media", op: "load", src: url });
     applyMediaEvent({ op: "load", src: url });
     $("stopShareBtn").classList.remove("hidden");
     $("mediaDeck").open = false;
@@ -356,9 +365,9 @@ function wireSync(el) {
         return;
     }
     el.controls = true;
-    el.onplay = () => !urlSyncGuard && p2p.hostBroadcast({ type: "media", op: "play", t: el.currentTime, at: Date.now() });
-    el.onpause = () => !urlSyncGuard && p2p.hostBroadcast({ type: "media", op: "pause", t: el.currentTime });
-    el.onseeked = () => !urlSyncGuard && p2p.hostBroadcast({ type: "media", op: "seek", t: el.currentTime, at: Date.now() });
+    el.onplay = () => !urlSyncGuard && lk && lk.sendToAll({ type: "media", op: "play", t: el.currentTime, at: Date.now() });
+    el.onpause = () => !urlSyncGuard && lk && lk.sendToAll({ type: "media", op: "pause", t: el.currentTime });
+    el.onseeked = () => !urlSyncGuard && lk && lk.sendToAll({ type: "media", op: "seek", t: el.currentTime, at: Date.now() });
 }
 
 function onHostMessage(msg) {
