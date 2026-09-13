@@ -696,45 +696,39 @@ class P2PRoom {
     /* --- room advertising (game hosts) --- */
 
     /**
-     * Connect to the hub in the background and start advertising this room,
-     * retrying on failure (PeerJS cloud has slow/busy days).
-     * Games call this instead of `connectHub().then(advertiseRoom)`.
+     * Advertise this room to the HTTP directory (batorgames-livekit service).
+     * No hub-host election roulette: beacons land on an always-on server.
+     * Still connects to the hub room in the background for presence/robustness.
      */
-    advertiseWhenReady(attempt = 1) {
-        if (this._hub && this._advTimer) return; // already advertising
-        this.connectHub((this.me && this.me.name) || "")
-            .then(() => this.advertiseRoom())
-            .catch((err) => {
-                if (attempt >= 30) return; // ~10 min of trying, then give up quietly
-                const delay = Math.min(attempt * 5000, 30000);
-                if (!this._destroyed) this._advRetry = setTimeout(() => this.advertiseWhenReady(attempt + 1), delay);
-            });
-    }
-
-    advertiseRoom() {
-        if (!this.isHost || !this._hub || this._advTimer) return;
-        const send = () => {
-            if (!this.roomMeta.listed) return;
-            const beacon = {
-                type: "__roomBeacon",
-                prefix: this.prefix,
-                code: this.roomCode,
-                title: this.roomMeta.title,
-                hostName: this.me.name,
-                hubPeerId: this._hub.me && this._hub.me.id,
-                members: this.roster.map(({ id, name }) => ({ id, name })),
-                players: this.roster.length,
-                locked: !!this.roomMeta.password,
-                maxPlayers: this.maxPeers === Infinity ? null : this.maxPeers
-            };
-            if (this._hub.isHost) this._hub._directoryUpdate(beacon);
-            else this._hub.sendToHost(beacon);
+    advertiseWhenReady() {
+        const DIRECTORY_URL = (window.DIRECTORY_URL || "https://livekit-token-dnuo.onrender.com");
+        const send = async () => {
+            if (!this.isHost) return;
+            const locked = !!this.roomMeta.password;
+            try {
+                await fetch(DIRECTORY_URL + "/beacon", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        prefix: this.prefix,
+                        code: this.roomCode,
+                        title: this.roomMeta.title,
+                        players: locked ? 0 : this.roster.length, // unlisted = players 0 (drops out)
+                        locked,
+                        maxPlayers: this.maxPeers === Infinity ? null : this.maxPeers,
+                        hubPeerId: (this.me && this.me.id) || null,
+                        members: locked ? [] : this.roster.map((p) => ({ id: p.id, name: p.name }))
+                    })
+                });
+            } catch (_) { /* server asleep — next tick retries */ }
         };
         send();
         this._advTimer = setInterval(send, 15000);
-        // Re-beacon whenever the roster changes so player counts stay fresh
         const prev = this.onRosterChange;
         this.onRosterChange = (roster) => { prev(roster); send(); };
+
+        // presence still rides the hub room as before, in the background
+        this.connectHub((this.me && this.me.name) || "").catch(() => {});
     }
 
     stopAdvertising() {
