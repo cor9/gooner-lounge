@@ -401,7 +401,14 @@ function init() {
 
     // Save this room as MY permanent link (device-local)
     $("saveRoomBtn") && $("saveRoomBtn").addEventListener("click", () => {
-        localStorage.setItem("batorRoom:" + ROOM_PREFIX, p2p.roomCode);
+        (() => {
+                const cur = localStorage.getItem("batorRoom:" + ROOM_PREFIX) || p2p.roomCode;
+                let custom = prompt("Your permanent room name (letters/numbers/dash, 3-16):", cur);
+                if (custom === null) custom = cur;
+                custom = custom.trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 16);
+                const code = custom.length >= 3 ? custom : cur;
+                localStorage.setItem("batorRoom:" + ROOM_PREFIX, code);
+            })();
         $("saveRoomBtn").textContent = "🔖 Saved! This is YOUR link now";
         $("saveRoomBtn").style.borderColor = "#3dff73";
         setTimeout(() => { $("saveRoomBtn").textContent = "🔖 Permanent Link"; }, 2500);
