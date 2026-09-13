@@ -109,16 +109,34 @@ class P2PRoom {
         this.me = { id: this.peer.id, name };
         this._wireCommon();
 
-        // Connect to host; roster comes back and we mesh from there
-        await new Promise((resolve, reject) => {
-            const timer = setTimeout(() => this._finishJoin(new Error("The host did not respond. Try again or ask for a fresh room link.")), 20000);
-            this._pendingJoin = (err) => {
-                clearTimeout(timer);
-                this._pendingJoin = null;
-                if (err) reject(err); else resolve();
-            };
-            this._ensureData(this.hostId);
-        }).catch((err) => { this.destroy(); throw err; });
+        // Connect to host; roster comes back and we mesh from there.
+        // The free PeerJS broker can take a moment to learn a brand-new room
+        // ID, so retry "peer-unavailable" a few times before giving up.
+        const MAX_ATTEMPTS = 4;
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                await new Promise((resolve, reject) => {
+                    const timer = setTimeout(() => this._finishJoin(new Error("The host did not respond. Try again or ask for a fresh room link.")), 20000);
+                    this._pendingJoin = (err) => {
+                        clearTimeout(timer);
+                        this._pendingJoin = null;
+                        if (err) reject(err); else resolve();
+                    };
+                    this._ensureData(this.hostId);
+                });
+                break;
+            } catch (err) {
+                if (err && err.type === "peer-unavailable" && attempt < MAX_ATTEMPTS) {
+                    await new Promise((r) => setTimeout(r, 2500));
+                    continue;
+                }
+                this.destroy();
+                if (err && err.type === "peer-unavailable") {
+                    throw new Error("Couldn't reach the room — the host may have left, or the broker is being slow. Try again in a few seconds.");
+                }
+                throw err;
+            }
+        }
         if (this.mediaEnabled) this._ensureCall(this.hostId); // cam to host first
         this._mountRoomBadge();
         return null;
@@ -346,8 +364,9 @@ class P2PRoom {
 
     _wireCommon() {
         this.peer.on("error", (err) => {
+            const joining = !!this._pendingJoin;
             this._finishJoin(err);
-            if (err.type === "peer-unavailable") {
+            if (err.type === "peer-unavailable" && !joining) {
                 this.onError(new Error("Couldn't reach a player — they may have left or the code is wrong."));
             }
         });
