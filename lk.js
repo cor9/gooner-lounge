@@ -8,7 +8,9 @@
    tiles map 1:1 to the roster everywhere.
    ============================================================ */
 
-const LK_URL = "wss://batorgames-b07ix70y.livekit.cloud";
+// Self-hosted LiveKit (Hostinger VPS) — no connection-minutes quota,
+// swapped from LiveKit Cloud on 2026-09-15 after the free tier was exhausted.
+const LK_URL = "wss://livekit.batorgames.site";
 // Flipped to the Render URL once batorgames-livekit-token is deployed:
 const LK_TOKEN_URL = window.LK_TOKEN_URL || "https://livekit-token-dnuo.onrender.com/token";
 
