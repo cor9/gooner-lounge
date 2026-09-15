@@ -345,6 +345,7 @@ class LKMedia {
     disconnect() {
         if (this.room) this.room.disconnect();
         this.room = null;
+        this._connected = false;
     }
 
     /* ---------------- denial banner ---------------- */
