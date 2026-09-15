@@ -338,8 +338,15 @@ class LKMedia {
         if (!lp) return false;
         try {
             await lp.setCameraEnabled(!lp.isCameraEnabled);
+            this._setLocalCamVisual(lp.isCameraEnabled);
             return lp.isCameraEnabled;
         } catch (_) { return false; }
+    }
+
+    _setLocalCamVisual(enabled) {
+        document.querySelectorAll(".video-tile").forEach((tile) => {
+            if (tile.dataset.peer === this.identity) tile.classList.toggle("lk-cam-off", !enabled);
+        });
     }
 
     disconnect() {
@@ -452,6 +459,13 @@ const LK_SPOT_CSS = `
 .lk-tile-act.lk-kick-btn { border-color: #ff6b6b; }
 .video-tile.lk-tile-hidden { aspect-ratio: auto; height: 26px; overflow: hidden; }
 .video-tile.lk-tile-hidden video { display: none; }
+.video-tile.lk-cam-off video { visibility: hidden; }
+.video-tile.lk-cam-off::after {
+    content: "📷 Camera off";
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; color: #b7c8d2; background: #101820;
+    font: 600 13px Arial, sans-serif; pointer-events: none;
+}
 .video-tile.lk-muted .tile-label::after { content: " 🔇"; }
 `;
 
