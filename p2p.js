@@ -179,7 +179,7 @@ class P2PRoom {
     }
 
     shareLink() {
-        return `${location.origin}${location.pathname}#join=${this.roomCode}`;
+        return `${location.origin}${location.pathname}?join=${this.roomCode}`;
     }
 
     /** Everyone: fire-and-forget to all peers (chat, etc. — broadcast by host for consistency) */

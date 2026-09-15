@@ -426,9 +426,11 @@ function init() {
         connect(false, code);
     });
 
-    const m = location.hash.match(/#join=([a-z0-9]{6})/i);
-    if (m) {
-        $("joinCodeInput").value = m[1].toLowerCase();
+    const queryCode = new URLSearchParams(location.search).get("join");
+    const hashMatch = location.hash.match(/#join=([a-z0-9]{6})/i);
+    const joinCode = queryCode || (hashMatch && hashMatch[1]);
+    if (joinCode && /^[a-z0-9]{6}$/i.test(joinCode)) {
+        $("joinCodeInput").value = joinCode.toLowerCase();
         $("connectStatus").textContent = "Link loaded — enter your name and hit Join.";
         $("nameInput").focus();
     }
