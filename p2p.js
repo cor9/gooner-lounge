@@ -720,7 +720,7 @@ class P2PRoom {
      * Still connects to the hub room in the background for presence/robustness.
      */
     advertiseWhenReady() {
-        const DIRECTORY_URL = (window.DIRECTORY_URL || "https://livekit-token-dnuo.onrender.com");
+        const DIRECTORY_URL = (window.DIRECTORY_URL || "https://livekit.batorgames.site");
         const send = async () => {
             if (!this.isHost) return;
             const locked = !!this.roomMeta.password;
