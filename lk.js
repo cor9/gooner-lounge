@@ -574,6 +574,16 @@ function _lkDecorateTile(tile) {
         tile.classList.toggle("lk-muted", video.muted);
     });
 
+    // enlarge camera view
+    const zoomBtn = document.createElement("button");
+    zoomBtn.className = "lk-tile-act";
+    zoomBtn.title = "Enlarge this cam";
+    zoomBtn.textContent = "⤢";
+    zoomBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openSpotlight(video.srcObject, tile.querySelector(".tile-label") ? tile.querySelector(".tile-label").textContent : "");
+    });
+
     // hide camera view (viewer-side)
     const hideBtn = document.createElement("button");
     hideBtn.className = "lk-tile-act";
@@ -585,7 +595,7 @@ function _lkDecorateTile(tile) {
         hideBtn.textContent = hidden ? "👁" : "🙈";
     });
 
-    acts.append(muteBtn, hideBtn);
+    acts.append(muteBtn, zoomBtn, hideBtn);
 
     // host kick
     if (cfg.isHost && cfg.kick && cfg.selfId &&
